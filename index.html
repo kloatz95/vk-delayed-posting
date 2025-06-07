@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Отложенный постинг</title>
+    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--vkui--color_background);
+            color: var(--vkui--color_text_primary);
+            line-height: 1.4;
+        }
+
+        :root {
+            --vkui--color_background: #ffffff;
+            --vkui--color_background_secondary: #f5f5f5;
+            --vkui--color_text_primary: #2c2d2e;
+            --vkui--color_text_secondary: #818c99;
+            --vkui--color_accent: #3f8ae0;
+            --vkui--color_accent_hover: #357abd;
+            --vkui--color_button_secondary: #e1e3e6;
+            --vkui--color_separator: #e1e3e6;
+            --vkui--color_field_border: #d7dadd;
+            --vkui--color_field_background: #ffffff;
+            --vkui--color_destructive: #e64646;
+        }
+
+        .container {
+            max-width: 100%;
+            padding: 16px;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: var(--vkui--color_background);
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--vkui--color_separator);
+            margin: -16px -16px 16px -16px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .header-title {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--vkui--color_text_primary);
+        }
+
+        .tab-bar {
+            display: flex;
+            background: var(--vkui--color_background);
+            border-radius: 8px;
+            padding: 4px;
+            gap: 4px;
+            margin-bottom: 16px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--vkui--color_text_secondary);
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            background: var(--vkui--color_accent);
+            color: white;
+        }
+
+        .tab:hover:not(.active) {
+            background: var(--vkui--color_background_secondary);
+        }
+
+        .content {
+            display: none;
+        }
+
+        .content.active {
+            display: block;
+        }
+
+        .button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .button-primary {
+            background: var(--vkui--color_accent);
+            color: white;
+        }
+
+        .button-primary:hover {
+            background: var(--vkui--color_accent_hover);
+        }
+
+        .button-secondary {
+            background: var(--vkui--color_button_secondary);
+            color: var(--vkui--color_text_primary);
+        }
+
+        .button-secondary:hover {
+            background: #d0d4d8;
+        }
+
+        .button-destructive {
+            background: var(--vkui--color_destructive);
+            color: white;
+        }
+
+        .card {
+            background: var(--vkui--color_background);
+            border-radius: 12px;
+            padding: 16px;
+            border: 1px solid var(--vkui--color_separator);
+            margin-bottom: 12px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--vkui--color_text_primary);
+        }
+
+        .form-input, .form-textarea, .form-select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--vkui--color_field_border);
+            border-radius: 8px;
+            font-size: 14px;
+            background: var(--vkui--color_field_background);
+            color: var(--vkui--color_text_primary);
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus, .form-textarea:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--vkui--color_accent);
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .post-item {
+            padding: 16px;
+            border: 1px solid var(--vkui--color_separator);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            background: var(--vkui--color_background);
+        }
+
+        .post-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .post-status {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .post-status.scheduled {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .post-status.published {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+
+        .post-status.failed {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .post-text {
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+
+        .post-media {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .media-item {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            background: var(--vkui--color_background_secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .post-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .fab {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--vkui--color_accent);
+            color: white;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(63, 138, 224, 0.3);
+            transition: all 0.2s;
+            z-index: 100;
+        }
+
+        .fab:hover {
+            background: var(--vkui--color_accent_hover);
+            transform: scale(1.1);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            animation: fadeIn 0.2s;
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--vkui--color_background);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 20px;
+            position: relative;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--vkui--color_separator);
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .close-button {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--vkui--color_text_secondary);
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-button:hover {
+            background: var(--vkui--color_background_secondary);
+        }
+
+        .file-upload {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+            margin-bottom: 12px;
+        }
+
+        .file-upload input {
+            display: none;
+        }
+
+        .file-upload-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border: 2px dashed var(--vkui--color_field_border);
+            border-radius: 8px;
+            color: var(--vkui--color_text_secondary);
+            transition: all 0.2s;
+        }
+
+        .file-upload-label:hover {
+            border-color: var(--vkui--color_accent);
+            color: var(--vkui--color_accent);
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .datetime-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+        }
+
+        .stat-card {
+            text-align: center;
+            padding: 16px;
+            border-radius: 8px;
+            background: var(--vkui--color_background_secondary);
+        }
+
+        .stat-number {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--vkui--color_accent);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--vkui--color_text_secondary);
+            margin-top: 4px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--vkui--color_text_secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @media (max-width: 480px) {
+            .datetime-group {
+                grid-template-columns: 1fr;
+            }
+            
+            .modal-content {
+                width: 95%;
+                margin: 10px;
+                max-height: 85vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-title">📅 Отложенный постинг</div>
+        </div>
+
+        <div class="tab-bar">
+            <button class="tab active" data-tab="posts">Посты</button>
+            <button class="tab" data-tab="create">Создать</button>
+            <button class="tab" data-tab="analytics">Аналитика</button>
+            <button class="tab" data-tab="settings">Настройки</button>
+        </div>
+
+        <!-- Вкладка "Посты" -->
+        <div class="content active" id="posts">
+            <div id="posts-list">
+                <!-- Посты будут загружены динамически -->
+            </div>
+        </div>
+
+        <!-- Вкладка "Создать пост" -->
+        <div class="content" id="create">
+            <div class="card">
+                <form id="post-form">
+                    <div class="form-group">
+                        <label class="form-label">Текст поста</label>
+                        <textarea class="form-textarea" id="post-text" placeholder="Что у вас нового?" rows="4"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Медиа файлы</label>
+                        <div class="file-upload">
+                            <input type="file" id="media-files" multiple accept="image/*,video/*,audio/*">
+                            <label for="media-files" class="file-upload-label">
+                                📎 Добавить фото, видео или аудио
+                            </label>
+                        </div>
+                        <div id="media-preview"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Опрос</label>
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <input type="text" class="form-input" id="poll-question" placeholder="Вопрос опроса">
+                            <button type="button" class="button button-secondary" id="add-poll">+ Опрос</button>
+                        </div>
+                        <div id="poll-options" style="display: none;">
+                            <input type="text" class="form-input" placeholder="Вариант 1" style="margin-bottom: 8px;">
+                            <input type="text" class="form-input" placeholder="Вариант 2" style="margin-bottom: 8px;">
+                            <button type="button" class="button button-secondary" style="font-size: 12px;">+ Добавить вариант</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Где опубликовать</label>
+                        <div class="checkbox-group" id="publish-targets">
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="target-wall" checked>
+                                <label for="target-wall">Моя страница</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Время публикации</label>
+                        <div class="datetime-group">
+                            <input type="date" class="form-input" id="post-date" required>
+                            <input type="time" class="form-input" id="post-time" required>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                        <button type="button" class="button button-secondary" id="save-draft">Сохранить черновик</button>
+                        <button type="submit" class="button button-primary">📅 Запланировать</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Вкладка "Аналитика" -->
+        <div class="content" id="analytics">
+            <div class="analytics-grid">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-posts">0</div>
+                    <div class="stat-label">Всего постов</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="scheduled-posts">0</div>
+                    <div class="stat-label">Запланировано</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="published-posts">0</div>
+                    <div class="stat-label">Опубликовано</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="total-views">0</div>
+                    <div class="stat-label">Просмотров</div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top: 16px;">
+                <h3 style="margin-bottom: 16px;">Активность по дням</h3>
+                <div style="height: 200px; background: var(--vkui--color_background_secondary); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--vkui--color_text_secondary);">
+                    📊 График будет доступен после первых публикаций
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка "Настройки" -->
+        <div class="content" id="settings">
+            <div class="card">
+                <h3 style="margin-bottom: 16px;">⚙️ Настройки приложения</h3>
+                
+                <div class="form-group">
+                    <label class="form-label">Часовой пояс</label>
+                    <select class="form-select" id="timezone">
+                        <option value="Europe/Moscow">МСК (UTC+3)</option>
+                        <option value="Europe/Kiev">Киев (UTC+2)</option>
+                        <option value="Asia/Yekaterinburg">Екатеринбург (UTC+5)</option>
+                        <option value="Asia/Novosibirsk">Новосибирск (UTC+7)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="auto-hashtags" checked>
+                        <label for="auto-hashtags">Автоматически добавлять хештеги</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="notifications" checked>
+                        <label for="notifications">Уведомления о публикациях</label>
+                    </div>
+                </div>
+
+                <button class="button button-primary">💾 Сохранить настройки</button>
+            </div>
+
+            <div class="card">
+                <h3 style="margin-bottom: 16px;">👥 Управление группами</h3>
+                <p style="color: var(--vkui--color_text_secondary); margin-bottom: 12px;">
+                    Добавьте группы, в которых вы являетесь администратором
+                </p>
+                <button class="button button-secondary" id="load-groups">🔄 Загрузить мои группы</button>
+                <div id="groups-list" style="margin-top: 12px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FAB кнопка -->
+    <button class="fab" id="fab-create">+</button>
+
+    <script>
+        // Инициализация VK Bridge
+        if (typeof vkBridge !== 'undefined') {
+            vkBridge.send('VKWebAppInit');
+        }
+
+        // Глобальные переменные
+        let posts = JSON.parse(localStorage.getItem('vk_delayed_posts') || '[]');
+        let groups = [];
+        let settings = JSON.parse(localStorage.getItem('vk_app_settings') || '{}');
+
+        // Переключение вкладок
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const targetTab = tab.dataset.tab;
+                
+                // Убираем активный класс со всех вкладок и контента
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+                
+                // Добавляем активный класс к выбранной вкладке
+                tab.classList.add('active');
+                document.getElementById(targetTab).classList.add('active');
+                
+                // Обновляем контент при переходе на вкладки
+                if (targetTab === 'posts') {
+                    renderPosts();
+                } else if (targetTab === 'analytics') {
+                    updateAnalytics();
+                }
+            });
+        });
+
+        // FAB кнопка
+        document.getElementById('fab-create').addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+            
+            document.querySelector('[data-tab="create"]').classList.add('active');
+            document.getElementById('create').classList.add('active');
+        });
+
+        // Обработка формы создания поста
+        document.getElementById('post-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                text: document.getElementById('post-text').value,
+                date: document.getElementById('post-date').value,
+                time: document.getElementById('post-time').value,
+                targets: Array.from(document.querySelectorAll('#publish-targets input:checked')).map(el => el.id),
+                media: [], // Здесь будут медиа файлы
+                poll: null, // Здесь будет опрос
+                created: new Date().toISOString(),
+                status: 'scheduled'
+            };
+
+            // Валидация
+            if (!formData.text.trim()) {
+                alert('Введите текст поста');
+                return;
+            }
+            
+            if (!formData.date || !formData.time) {
+                alert('Выберите дату и время публикации');
+                return;
+            }
+
+            // Добавляем пост в список
+            const postId = Date.now().toString();
+            posts.unshift({
+                id: postId,
+                ...formData
+            });
+            
+            // Сохраняем в localStorage
+            localStorage.setItem('vk_delayed_posts', JSON.stringify(posts));
+            
+            // Очищаем форму
+            document.getElementById('post-form').reset();
+            
+            // Показываем успешное сообщение
+            alert('✅ Пост запланирован!');
+            
+            // Переходим на вкладку постов
+            document.querySelector('[data-tab="posts"]').click();
+        });
+
+        // Загрузка медиа файлов
+        document.getElementById('media-files').addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            const preview = document.getElementById('media-preview');
+            preview.innerHTML = '';
+            
+            files.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'media-item';
+                
+                if (file.type.startsWith('image/')) {
+                    item.textContent = '🖼️';
+                } else if (file.type.startsWith('video/')) {
+                    item.textContent = '🎥';
+                } else if (file.type.startsWith('audio/')) {
+                    item.textContent = '🎵';
+                }
+                
+                preview.appendChild(item);
+            });
+        });
+
+        // Добавление опроса
+        document.getElementById('add-poll').addEventListener('click', () => {
+            const pollOptions = document.getElementById('poll-options');
+            if (pollOptions.style.display === 'none') {
+                pollOptions.style.display = 'block';
+                document.getElementById('add-poll').textContent = '- Убрать опрос';
+            } else {
+                pollOptions.style.display = 'none';
+                document.getElementById('add-poll').textContent = '+ Опрос';
+            }
+        });
+
+        // Загрузка групп
+        document.getElementById('load-groups').addEventListener('click', async () => {
+            try {
+                // Имитация загрузки групп через VK API
+                const mockGroups = [
+                    { id: 1, name: 'Моя группа #1', photo: '👥' },
+                    { id: 2, name: 'Бизнес сообщество', photo: '💼' },
+                    { id: 3, name: 'IT новости', photo: '💻' }
+                ];
+                
+                groups = mockGroups;
+                renderGroups();
+                renderPublishTargets();
+                
+                alert('✅ Группы загружены!');
+            } catch (error) {
+                alert('❌ Ошибка загрузки групп');
+            }
+        });
+
+        // Рендеринг списка постов
+        function renderPosts() {
+            const container = document.getElementById('posts-list');
+            
+            if (posts.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📝</div>
+                        <p>У вас пока нет запланированных постов</p>
+                        <button class="button button-primary" style="margin-top: 16px;" onclick="document.querySelector('[data-tab=create]').click()">
+                            Создать первый пост
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = posts.map(post => `
+                <div class="post-item">
+                    <div class="post-header">
+                        <div>
+                            <div style="font-size: 12px; color: var(--vkui--color_text_secondary);">
+                                📅 ${formatDate(post.date, post.time)}
+                            </div>
+                        </div>
+                        <span class="post-status ${post.status}">${getStatusText(post.status)}</span>
+                    </div>
+                    
+                    <div class="post-text">${post.text}</div>
+                    
+                    ${post.media && post.media.length > 0 ? `
+                        <div class="post-media">
+                            ${post.media.map(() => '<div class="media-item">🖼️</div>').join('')}
+                        </div>
+                    ` : ''}
+                    
+                    <div class="post-actions">
+                        <button class="button button-secondary" onclick="editPost('${post.id}')">✏️ Изменить</button>
+                        <button class="button button-destructive" onclick="deletePost('${post.id}')">🗑️ Удалить</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Рендеринг групп
+        function renderGroups() {
+            const container = document.getElementById('groups-list');
+            container.innerHTML = groups.map(group => `
+                <div class="checkbox-item" style="padding: 8px; background: var(--vkui--color_background_secondary); border-radius: 8px; margin-bottom: 8px;">
+                    <input type="checkbox" id="group-${group.id}" checked>
+                    <label for="group-${group.id}">${group.photo} ${group.name}</label>
+                </div>
+            `).join('');
+        }
+
+        // Рендеринг целей публикации
+        function renderPublishTargets() {
+            const container = document.getElementById('publish-targets');
+            const groupTargets = groups.map(group => `
+                <div class="checkbox-item">
+                    <input type="checkbox" id="target-group-${group.id}">
+                    <label for="target-group-${group.id}">${group.photo} ${group.name}</label>
+                </div>
+            `).join('');
+            
+            container.innerHTML = `
+                <div class="checkbox-item">
+                    <input type="checkbox" id="target-wall" checked>
+                    <label for="target-wall">📝 Моя страница</label>
+                </div>
+                ${groupTargets}
+            `;
+        }
+
+        // Обновление аналитики
+        function updateAnalytics() {
+            const total = posts.length;
+            const scheduled = posts.filter(p => p.status === 'scheduled').length;
+            const published = posts.filter(p => p.status === 'published').length;
+            
+            document.getElementById('total-posts').textContent = total;
+            document.getElementById('scheduled-posts').textContent = scheduled;
+            document.getElementById('published-posts').textContent = published;
+            document.getElementById('total-views').textContent = Math.floor(Math.random() * 1000); // Имитация
+        }
+
+        // Утилиты
+        function formatDate(date, time) {
+            const d = new Date(date + 'T' + time);
+            return d.toLocaleString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function getStatusText(status) {
+            const statuses = {
+                'scheduled': 'Запланирован',
+                'published': 'Опубликован',
+                'failed': 'Ошибка'
+            };
+            return statuses[status] || status;
+        }
+
+        function editPost(id) {
+            const post = posts.find(p => p.id === id);
+            if (post) {
+                // Заполняем форму данными поста
+                document.getElementById('post-text').value = post.text;
+                document.getElementById('post-date').value = post.date;
+                document.getElementById('post-time').value = post.time;
+                
+                // Переходим на вкладку создания
+                document.querySelector('[data-tab="create"]').click();
+            }
+        }
+
+        function deletePost(id) {
+            if (confirm('Удалить этот пост?')) {
+                posts = posts.filter(p => p.id !== id);
+                localStorage.setItem('vk_delayed_posts', JSON.stringify(posts));
+                renderPosts();
+                updateAnalytics();
+            }
+        }
+
+        // Установка минимальной даты (сегодня)
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('post-date').min = today;
+        document.getElementById('post-date').value = today;
+
+        // Установка текущего времени + 1 час
+        const now = new Date();
+        now.setHours(now.getHours() + 1);
+        document.getElementById('post-time').value = now.toTimeString().slice(0, 5);
+
+        // Инициализация приложения
+        document.addEventListener('DOMContentLoaded', () => {
+            renderPosts();
+            updateAnalytics();
+            
+            // Имитация загрузки пользовательских данных
+            setTimeout(() => {
+                if (typeof vkBridge !== 'undefined') {
+                    vkBridge.send('VKWebAppGetUserInfo').then(user => {
+                        console.log('Пользователь загружен:', user);
+                    }).catch(err => {
+                        console.log('Ошибка загрузки пользователя:', err);
+                    });
+                }
+            }, 1000);
+        });
+
+        // Имитация публикации постов (в реальном приложении это будет серверная логика)
+        setInterval(() => {
+            const now = new Date();
+            posts.forEach(post => {
+                if (post.status === 'scheduled') {
+                    const postTime = new Date(post.date + 'T' + post.time);
+                    if (postTime <= now) {
+                        post.status = 'published';
+                        console.log('Пост опубликован:', post.text.substring(0, 50) + '...');
+                    }
+                }
+            });
+            localStorage.setItem('vk_delayed_posts', JSON.stringify(posts));
+        }, 60000); // Проверяем каждую минуту
+    </script>
+</body>
+</html>
