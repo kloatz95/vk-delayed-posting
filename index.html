@@ -617,7 +617,7 @@
                 if (!userToken) {
                     console.log('Запрашиваем авторизацию...');
                     const authData = await vkBridge.send('VKWebAppGetAuthToken', {
-                        app_id: 123456789, // ЗАМЕНИТЕ НА ID ВАШЕГО ПРИЛОЖЕНИЯ
+                        app_id: 53713488, // ЗАМЕНИТЕ НА ID ВАШЕГО ПРИЛОЖЕНИЯ
                         scope: 'wall,photos,video,audio,groups,offline'
                     });
                     userToken = authData.access_token;
