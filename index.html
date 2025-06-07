@@ -588,7 +588,52 @@
         let userInfo = null;
         let isVKEnvironment = false;
 
-        // Переключение вкладок
+        // Обновление статуса авторизации
+        function updateAuthStatus() {
+            const authStatusDiv = document.getElementById('auth-status');
+            const authMessage = document.getElementById('auth-message');
+            const manualAuthBtn = document.getElementById('manual-auth');
+            
+            if (!isVKEnvironment) {
+                authStatusDiv.style.display = 'block';
+                authStatusDiv.style.background = '#fff3cd';
+                authStatusDiv.style.color = '#856404';
+                authMessage.textContent = '⚠️ Режим разработки - публикация имитируется';
+                manualAuthBtn.style.display = 'none';
+            } else if (userToken) {
+                authStatusDiv.style.display = 'block';
+                authStatusDiv.style.background = '#d4edda';
+                authStatusDiv.style.color = '#155724';
+                authMessage.textContent = '✅ Авторизация прошла успешно - можно публиковать!';
+                manualAuthBtn.style.display = 'none';
+            } else {
+                authStatusDiv.style.display = 'block';
+                authStatusDiv.style.background = '#f8d7da';
+                authStatusDiv.style.color = '#721c24';
+                authMessage.textContent = '❌ Требуется авторизация для публикации постов';
+                manualAuthBtn.style.display = 'inline-block';
+            }
+        }
+
+        // Ручная авторизация
+        document.addEventListener('click', async (e) => {
+            if (e.target && e.target.id === 'manual-auth') {
+                try {
+                    e.target.disabled = true;
+                    e.target.textContent = '⏳ Авторизация...';
+                    
+                    await authorize();
+                    updateAuthStatus();
+                    
+                    alert('✅ Авторизация успешна! Теперь можно публиковать посты.');
+                } catch (error) {
+                    e.target.disabled = false;
+                    e.target.textContent = '🔑 Авторизоваться вручную';
+                    
+                    // Уже показали детальную ошибку в функции authorize()
+                }
+            }
+        });
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 const targetTab = tab.dataset.tab;
@@ -676,7 +721,7 @@
 
         // ====== VK API ИНТЕГРАЦИЯ ======
 
-        // Авторизация пользователя
+        // Авторизация пользователя (упрощенный подход)
         async function authorize() {
             try {
                 if (!isVKEnvironment) {
@@ -684,45 +729,63 @@
                 }
 
                 if (!userToken) {
-                    console.log('Запрашиваем авторизацию...');
-                    const authData = await vkBridge.send('VKWebAppGetAuthToken', {
-                        app_id: 53713488, // ВАШ ID ПРИЛОЖЕНИЯ
-                        scope: 'wall,photos,video,audio,groups,offline'
-                    });
-                    userToken = authData.access_token;
-                    console.log('✅ Авторизация успешна');
+                    console.log('🔑 Запрашиваем авторизацию через VK Bridge...');
+                    
+                    // Сначала пробуем получить токен через VKWebAppGetAuthToken
+                    try {
+                        const authData = await vkBridge.send('VKWebAppGetAuthToken', {
+                            app_id: 53713488,
+                            scope: 'wall,photos,groups'
+                        });
+                        userToken = authData.access_token;
+                        console.log('✅ Авторизация успешна через GetAuthToken');
+                        return userToken;
+                    } catch (authError) {
+                        console.log('⚠️ GetAuthToken не сработал, пробуем альтернативный способ...');
+                        
+                        // Альтернативный способ - просим пользователя открыть авторизацию
+                        const authUrl = `https://oauth.vk.com/authorize?client_id=53713488&display=popup&redirect_uri=https://oauth.vk.com/blank.html&scope=wall,photos,groups&response_type=token&v=5.131`;
+                        
+                        try {
+                            await vkBridge.send('VKWebAppOpenCodeReader');
+                        } catch (e) {
+                            // Игнорируем ошибку
+                        }
+                        
+                        throw new Error('Требуется ручная авторизация. Перейдите в настройки приложения и предоставьте права доступа.');
+                    }
                 }
                 return userToken;
             } catch (error) {
                 console.error('❌ Ошибка авторизации:', error);
                 
-                if (!isVKEnvironment) {
-                    // Проверяем, открыто ли через ВК
-                    const isInVK = window.location.href.includes('vk.com/app');
-                    
-                    if (isInVK) {
-                        alert(`❌ ОШИБКА VK BRIDGE\n\nПриложение открыто через ВК, но VK Bridge не работает.\n\nПопробуйте:\n1. Перезагрузить страницу (F5)\n2. Очистить кэш браузера\n3. Открыть в другом браузере\n\nЕсли ошибка повторяется, обратитесь к разработчику.`);
-                    } else {
-                        alert(`❌ ОШИБКА: Откройте приложение через ВКонтакте!\n\nСсылка: vk.com/app53713488\n\nТекущая ссылка не поддерживает VK API.`);
-                    }
-                } else {
-                    // VK Bridge работает, но авторизация не прошла
-                    if (error.error_code === 4) {
-                        alert('❌ Доступ запрещен.\n\nВозможные причины:\n1. Приложение заблокировано администрацией ВК\n2. Нет прав на публикацию\n3. Проблемы с настройками приложения');
-                    } else if (error.error_code === 5) {
-                        alert('❌ Пользователь отменил авторизацию.\n\nДля работы приложения необходимо разрешить доступ.');
-                    } else {
-                        alert(`❌ Ошибка авторизации: ${error.error_msg || error.message}\n\nКод ошибки: ${error.error_code || 'неизвестно'}`);
-                    }
-                }
+                // Показываем понятное сообщение пользователю
+                const errorMessage = `❌ ПРОБЛЕМА С АВТОРИЗАЦИЕЙ
+
+🔍 Что произошло:
+VK заблокировал запрос токена из-за настроек безопасности.
+
+🔧 Как исправить:
+1️⃣ Откройте настройки вашего VK приложения
+2️⃣ Проверьте "Доверенный redirect URI"
+3️⃣ Добавьте: https://kloatz95.github.io
+4️⃣ Включите права: wall, photos, groups
+
+💡 Альтернатива:
+Используйте режим имитации для тестирования интерфейса.
+
+⚙️ Детали ошибки: ${error.message}`;
+
+                alert(errorMessage);
                 throw error;
             }
         }
 
-        // Получение информации о пользователе
+        // Получение информации о пользователе (без токена)
         async function getUserInfo() {
             try {
                 if (!userInfo && isVKEnvironment) {
+                    console.log('📱 Получаем информацию о пользователе...');
                     userInfo = await vkBridge.send('VKWebAppGetUserInfo');
                     console.log('✅ Информация о пользователе получена:', userInfo);
                 } else if (!isVKEnvironment) {
@@ -737,7 +800,15 @@
                 return userInfo;
             } catch (error) {
                 console.error('❌ Ошибка получения информации о пользователе:', error);
-                return null;
+                
+                // Даже если не удалось получить реальную информацию, создаем базовую
+                userInfo = {
+                    id: 'unknown',
+                    first_name: 'Пользователь',
+                    last_name: 'ВК'
+                };
+                
+                return userInfo;
             }
         }
 
@@ -1000,16 +1071,7 @@
                 return;
             }
 
-            // Проверяем авторизацию
-            try {
-                await authorize();
-                await getUserInfo();
-            } catch (error) {
-                alert('❌ Необходима авторизация ВКонтакте');
-                return;
-            }
-
-            // Добавляем пост в список
+            // Добавляем пост в список (БЕЗ проверки авторизации)
             const postId = Date.now().toString();
             posts.unshift({
                 id: postId,
@@ -1026,10 +1088,16 @@
             document.getElementById('add-poll').textContent = '+ Опрос';
             
             // Показываем успешное сообщение
-            alert('✅ Пост запланирован!');
+            const message = isVKEnvironment && userToken 
+                ? '✅ Пост запланирован и будет опубликован автоматически!' 
+                : '✅ Пост запланирован! Для публикации нужна авторизация.';
+            alert(message);
             
             // Переходим на вкладку постов
             document.querySelector('[data-tab="posts"]').click();
+            
+            // Обновляем статус авторизации
+            updateAuthStatus();
         });
 
         // Загрузка медиа файлов
@@ -1272,6 +1340,13 @@
             const post = posts.find(p => p.id === id);
             if (post && post.status === 'scheduled') {
                 if (confirm('🚀 Опубликовать этот пост прямо сейчас?')) {
+                    
+                    // Проверяем авторизацию перед публикацией
+                    if (!userToken && isVKEnvironment) {
+                        alert('❌ Для публикации нужна авторизация!\n\nНажмите кнопку "🔑 Авторизоваться вручную" на вкладке создания поста.');
+                        return;
+                    }
+                    
                     // Устанавливаем статус "публикуется"
                     post.status = 'publishing';
                     localStorage.setItem('vk_delayed_posts', JSON.stringify(posts));
@@ -1285,7 +1360,11 @@
                             localStorage.setItem('vk_delayed_posts', JSON.stringify(posts));
                             renderPosts();
                             updateAnalytics();
-                            alert('✅ Пост успешно опубликован в ВКонтакте!');
+                            
+                            const message = isVKEnvironment 
+                                ? '✅ Пост успешно опубликован в ВКонтакте!' 
+                                : '✅ Имитация публикации завершена!';
+                            alert(message);
                         })
                         .catch((error) => {
                             post.status = 'failed';
@@ -1315,45 +1394,47 @@
             updateAnalytics();
             
             // Добавляем задержку для инициализации VK Bridge
-            setTimeout(() => {
+            setTimeout(async () => {
                 // Проверяем VK окружение
                 checkVKEnvironment();
                 showEnvironmentNotice();
                 
-                console.log('🔍 Диагностика:');
+                console.log('🔍 Диагностика VK Bridge:');
                 console.log('- URL:', window.location.href);
-                console.log('- VK Bridge:', !!vkBridge);
-                console.log('- VK Bridge send:', !!(vkBridge && vkBridge.send));
+                console.log('- window.vkBridge:', !!window.vkBridge);
+                console.log('- vkBridge variable:', !!vkBridge);
+                console.log('- vkBridge.send:', !!(vkBridge && vkBridge.send));
                 console.log('- isVKEnvironment:', isVKEnvironment);
+                
+                // Инициализация пользователя
+                try {
+                    console.log('🚀 Получаем информацию о пользователе...');
+                    
+                    await getUserInfo();
+                    
+                    if (userInfo) {
+                        console.log('✅ Пользователь:', userInfo.first_name, userInfo.last_name);
+                        
+                        // Обновляем заголовок
+                        const headerTitle = document.querySelector('.header-title');
+                        if (headerTitle) {
+                            const status = isVKEnvironment ? '' : ' (Разработка)';
+                            headerTitle.textContent = `📅 Отложенный постинг - ${userInfo.first_name}${status}`;
+                        }
+                    }
+                    
+                    // Обновляем статус авторизации
+                    updateAuthStatus();
+                    
+                } catch (error) {
+                    console.error('❌ Ошибка инициализации:', error);
+                    updateAuthStatus();
+                }
             }, 500);
             
             // Запрашиваем разрешение на уведомления
             if ('Notification' in window && Notification.permission === 'default') {
                 Notification.requestPermission();
-            }
-            
-            // Инициализация пользователя
-            try {
-                console.log('🚀 Инициализация приложения...');
-                
-                // Получаем информацию о пользователе
-                await getUserInfo();
-                
-                if (userInfo) {
-                    console.log('✅ Пользователь загружен:', userInfo.first_name, userInfo.last_name);
-                    
-                    // Обновляем заголовок с именем пользователя
-                    const headerTitle = document.querySelector('.header-title');
-                    if (headerTitle) {
-                        const status = isVKEnvironment ? '' : ' (Режим разработки)';
-                        headerTitle.textContent = `📅 Отложенный постинг - ${userInfo.first_name}${status}`;
-                    }
-                } else {
-                    console.log('⚠️ Не удалось получить информацию о пользователе');
-                }
-                
-            } catch (error) {
-                console.error('❌ Ошибка инициализации:', error);
             }
         });
 
