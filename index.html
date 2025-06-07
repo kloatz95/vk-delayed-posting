@@ -586,6 +586,7 @@
         let settings = JSON.parse(localStorage.getItem('vk_app_settings') || '{}');
         let userToken = null;
         let userInfo = null;
+        let isVKEnvironment = false;
 
         // Переключение вкладок
         document.querySelectorAll('.tab').forEach(tab => {
@@ -609,15 +610,83 @@
             });
         });
 
+        // Проверка VK окружения
+        function checkVKEnvironment() {
+            // Проверяем доступность VK Bridge
+            if (vkBridge && typeof vkBridge.send === 'function') {
+                isVKEnvironment = true;
+                console.log('✅ VK Bridge доступен и инициализирован');
+                return true;
+            } else {
+                isVKEnvironment = false;
+                console.log('❌ VK Bridge недоступен');
+                return false;
+            }
+        }
+
+        // Показать уведомление о режиме разработки
+        function showEnvironmentNotice() {
+            if (!isVKEnvironment) {
+                const notice = document.createElement('div');
+                notice.style.cssText = `
+                    position: fixed;
+                    top: 10px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: #ff9800;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    z-index: 1000;
+                    font-size: 14px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                    max-width: 90%;
+                    text-align: center;
+                `;
+                
+                // Проверяем, открыто ли через ВК
+                const isInVK = window.location.href.includes('vk.com/app');
+                
+                if (isInVK) {
+                    notice.innerHTML = `
+                        <strong>⚠️ ПРОБЛЕМА С VK BRIDGE</strong><br>
+                        Приложение открыто через ВК, но VK Bridge не работает.<br>
+                        Попробуйте перезагрузить страницу или обратитесь к разработчику.
+                    `;
+                } else {
+                    notice.innerHTML = `
+                        <strong>⚠️ РЕЖИМ РАЗРАБОТКИ</strong><br>
+                        Для полной работы откройте через ВКонтакте:<br>
+                        <code style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 4px;">
+                            vk.com/app53713488
+                        </code>
+                    `;
+                }
+                
+                document.body.appendChild(notice);
+
+                // Убираем уведомление через 10 секунд
+                setTimeout(() => {
+                    if (notice.parentNode) {
+                        notice.parentNode.removeChild(notice);
+                    }
+                }, 10000);
+            }
+        }
+
         // ====== VK API ИНТЕГРАЦИЯ ======
 
         // Авторизация пользователя
         async function authorize() {
             try {
+                if (!isVKEnvironment) {
+                    throw new Error('VK Bridge недоступен');
+                }
+
                 if (!userToken) {
                     console.log('Запрашиваем авторизацию...');
                     const authData = await vkBridge.send('VKWebAppGetAuthToken', {
-                        app_id: 53713488, // ЗАМЕНИТЕ НА ID ВАШЕГО ПРИЛОЖЕНИЯ
+                        app_id: 53713488, // ВАШ ID ПРИЛОЖЕНИЯ
                         scope: 'wall,photos,video,audio,groups,offline'
                     });
                     userToken = authData.access_token;
@@ -626,7 +695,26 @@
                 return userToken;
             } catch (error) {
                 console.error('❌ Ошибка авторизации:', error);
-                alert('❌ Ошибка авторизации. Попробуйте еще раз.');
+                
+                if (!isVKEnvironment) {
+                    // Проверяем, открыто ли через ВК
+                    const isInVK = window.location.href.includes('vk.com/app');
+                    
+                    if (isInVK) {
+                        alert(`❌ ОШИБКА VK BRIDGE\n\nПриложение открыто через ВК, но VK Bridge не работает.\n\nПопробуйте:\n1. Перезагрузить страницу (F5)\n2. Очистить кэш браузера\n3. Открыть в другом браузере\n\nЕсли ошибка повторяется, обратитесь к разработчику.`);
+                    } else {
+                        alert(`❌ ОШИБКА: Откройте приложение через ВКонтакте!\n\nСсылка: vk.com/app53713488\n\nТекущая ссылка не поддерживает VK API.`);
+                    }
+                } else {
+                    // VK Bridge работает, но авторизация не прошла
+                    if (error.error_code === 4) {
+                        alert('❌ Доступ запрещен.\n\nВозможные причины:\n1. Приложение заблокировано администрацией ВК\n2. Нет прав на публикацию\n3. Проблемы с настройками приложения');
+                    } else if (error.error_code === 5) {
+                        alert('❌ Пользователь отменил авторизацию.\n\nДля работы приложения необходимо разрешить доступ.');
+                    } else {
+                        alert(`❌ Ошибка авторизации: ${error.error_msg || error.message}\n\nКод ошибки: ${error.error_code || 'неизвестно'}`);
+                    }
+                }
                 throw error;
             }
         }
@@ -634,9 +722,17 @@
         // Получение информации о пользователе
         async function getUserInfo() {
             try {
-                if (!userInfo) {
+                if (!userInfo && isVKEnvironment) {
                     userInfo = await vkBridge.send('VKWebAppGetUserInfo');
                     console.log('✅ Информация о пользователе получена:', userInfo);
+                } else if (!isVKEnvironment) {
+                    // В режиме разработки показываем тестового пользователя
+                    userInfo = {
+                        id: 12345,
+                        first_name: 'Тестовый',
+                        last_name: 'Пользователь'
+                    };
+                    console.log('⚠️ Режим разработки - используем тестового пользователя');
                 }
                 return userInfo;
             } catch (error) {
@@ -718,6 +814,26 @@
         // Реальная публикация в ВК
         async function publishToVK(post) {
             try {
+                if (!isVKEnvironment) {
+                    // Имитация публикации в режиме разработки
+                    console.log('⚠️ ИМИТАЦИЯ: Публикация поста (VK API недоступен):', post.text.substring(0, 50) + '...');
+                    
+                    // Имитируем задержку сети
+                    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+                    
+                    // Имитируем случайную ошибку (10% вероятность)
+                    if (Math.random() < 0.1) {
+                        throw new Error('Имитация сетевой ошибки');
+                    }
+                    
+                    return [{
+                        response: {
+                            post_id: Math.floor(Math.random() * 1000000),
+                            simulated: true
+                        }
+                    }];
+                }
+
                 const token = await authorize();
                 console.log('🚀 Публикуем пост:', post.text.substring(0, 50) + '...');
 
@@ -788,6 +904,23 @@
         // Загрузка групп пользователя
         async function loadUserGroups() {
             try {
+                if (!isVKEnvironment) {
+                    // Имитация загрузки групп в режиме разработки
+                    console.log('⚠️ ИМИТАЦИЯ: Загрузка групп (VK API недоступен)');
+                    
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // Имитируем загрузку
+                    
+                    groups = [
+                        { id: 1, name: 'Моя тестовая группа #1', photo: '👥' },
+                        { id: 2, name: 'Бизнес сообщество', photo: '💼' },
+                        { id: 3, name: 'IT Разработка', photo: '💻' },
+                        { id: 4, name: 'Дизайн и Креатив', photo: '🎨' }
+                    ];
+                    
+                    console.log('✅ ИМИТАЦИЯ: Загружено групп:', groups.length);
+                    return groups;
+                }
+
                 const token = await authorize();
                 const result = await vkBridge.send('VKWebAppCallAPIMethod', {
                     method: 'groups.get',
@@ -1181,16 +1314,29 @@
             renderPosts();
             updateAnalytics();
             
+            // Добавляем задержку для инициализации VK Bridge
+            setTimeout(() => {
+                // Проверяем VK окружение
+                checkVKEnvironment();
+                showEnvironmentNotice();
+                
+                console.log('🔍 Диагностика:');
+                console.log('- URL:', window.location.href);
+                console.log('- VK Bridge:', !!vkBridge);
+                console.log('- VK Bridge send:', !!(vkBridge && vkBridge.send));
+                console.log('- isVKEnvironment:', isVKEnvironment);
+            }, 500);
+            
             // Запрашиваем разрешение на уведомления
             if ('Notification' in window && Notification.permission === 'default') {
                 Notification.requestPermission();
             }
             
-            // Инициализация VK Bridge и авторизация
+            // Инициализация пользователя
             try {
-                console.log('🚀 Инициализация VK Mini App...');
+                console.log('🚀 Инициализация приложения...');
                 
-                // Получаем информацию о пользователе (без токена)
+                // Получаем информацию о пользователе
                 await getUserInfo();
                 
                 if (userInfo) {
@@ -1199,7 +1345,8 @@
                     // Обновляем заголовок с именем пользователя
                     const headerTitle = document.querySelector('.header-title');
                     if (headerTitle) {
-                        headerTitle.textContent = `📅 Отложенный постинг - ${userInfo.first_name}`;
+                        const status = isVKEnvironment ? '' : ' (Режим разработки)';
+                        headerTitle.textContent = `📅 Отложенный постинг - ${userInfo.first_name}${status}`;
                     }
                 } else {
                     console.log('⚠️ Не удалось получить информацию о пользователе');
